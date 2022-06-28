@@ -32,7 +32,7 @@ namespace Client
                 {
                     attempts++;
                     Console.WriteLine("Connection attempt " + attempts);
-                    ClientSocket.Connect(IPAddress.Any, PORT);
+                    ClientSocket.Connect(IPAddress.Loopback, PORT); // Change IPAddress.Loopback to a remote address.
                 }
                 catch (SocketException)
                 {
@@ -95,12 +95,12 @@ namespace Client
         /// <summary>
         /// Sends a string to the server with ASCII encoding.
         /// </summary>
-        private static void SendString(string text)
+        private async static void SendString(string text)
         {
             try
             {
                 byte[] buffer = Encoding.ASCII.GetBytes(text);
-                ClientSocket.Send(buffer, 0, buffer.Length, SocketFlags.None);
+                await ClientSocket.SendAsync(buffer, SocketFlags.None);
             }
             catch (Exception)
             {

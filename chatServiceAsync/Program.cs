@@ -82,7 +82,7 @@ namespace Server
         }
 
 
-        private static async void ReceiveCallback(IAsyncResult AR)
+        private static void ReceiveCallback(IAsyncResult AR)
         {
             Socket current = (Socket)AR.AsyncState;
             int received;
@@ -110,31 +110,31 @@ namespace Server
             string text = Encoding.ASCII.GetString(recBuf);
             Console.WriteLine(text);
             byte[] data = Encoding.ASCII.GetBytes(text);
-            await Task.Run(async () =>
-            {
-                await Task.Delay(100);
-                spamControl(current, data, text);
-            });
+            //await Task.Run(async () =>
+            //{
+            //    await Task.Delay(100);
+            spamControl(current, data, text);
+            //});
         }
         /// <summary>
         /// Prevents a user to spam chat (send more than 1 message per second and punishes if happens)
         /// and broadcasts one client's messages to every client.
         /// </summary>
-        private static void spamControl(Socket current, byte[] data, string text)
+        public async static void spamControl(Socket current, byte[] data, string text)
         {
 
             foreach (Socket socket in clientSockets)
             {
                 if (socket != current) // Send the receiving messages to the other users.
                 {
-                    socket.Send(data);
+                    await socket.SendAsync(data, SocketFlags.None);
                     socket.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, socket);
                 }
                 else
                 {
                     // check every users warned states by server and punish them if necessary.
                     byte[] dataToUser = Encoding.ASCII.GetBytes(text + "$$$$$$$$$$");
-                    current.Send(dataToUser);
+                    await current.SendAsync(dataToUser, SocketFlags.None);
                     current.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, current);
                     if (socketSpamControl[current].listedControl)
                     {
@@ -150,7 +150,7 @@ namespace Server
                             if (socketSpamControl[current].gotWarned)
                             {
                                 warning = Encoding.ASCII.GetBytes("You've been warned. Sorry...");
-                                current.Send(warning);
+                                await current.SendAsync(warning, SocketFlags.None);
                                 clientSockets.Remove(current);
                                 Console.WriteLine("Client banned.");
                                 socketSpamControl.Remove(current);
@@ -161,7 +161,8 @@ namespace Server
                             else
                             {
                                 warning = Encoding.ASCII.GetBytes("Do NOT spam chat!!! You'll get banned if you do it once again.");
-                                current.Send(warning);
+                                await current.SendAsync(warning, SocketFlags.None);
+                                Console.WriteLine("Client warned.");
                                 socketSpamControl[current].gotWarned = true;
                             }
                         }
