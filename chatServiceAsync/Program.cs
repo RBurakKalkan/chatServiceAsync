@@ -11,10 +11,18 @@ namespace Server
     {
         private static readonly Socket serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         private static readonly List<Socket> clientSockets = new List<Socket>();
+        //private static  Dictionary<Socket, bool> socketSpamControl = new Dictionary<Socket, bool>();
+        public class warnedSocketInfo
+        {
+            public bool listedControl { get; set; }
+            public bool gotWarned { get; set; }
+        }
+        public static Dictionary<Socket, warnedSocketInfo> socketSpamControl = new Dictionary<Socket, warnedSocketInfo>();
+
         private const int BUFFER_SIZE = 2048;
         private const int PORT = 100;
         private static readonly byte[] buffer = new byte[BUFFER_SIZE];
-        static Stopwatch stopWatch             = new Stopwatch();
+        static Stopwatch stopWatch = new Stopwatch();
 
         static void Main()
         {
@@ -62,12 +70,16 @@ namespace Server
             }
 
             clientSockets.Add(socket);
+            warnedSocketInfo a = new warnedSocketInfo();
+            a.listedControl = true;
+            a.gotWarned = false;
+            socketSpamControl.Add(socket, a);
             socket.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, socket);
-            //Console.WriteLine("Client connected, waiting for request...");
+            Console.WriteLine("Client connected, waiting for request...");
             serverSocket.BeginAccept(AcceptCallback, null);
         }
 
-        static int counter, errorCounter;
+
         private static void ReceiveCallback(IAsyncResult AR)
         {
             Socket current = (Socket)AR.AsyncState;
@@ -75,7 +87,14 @@ namespace Server
 
             try
             {
-                received = current.EndReceive(AR);
+                if (current.Connected)
+                {
+                    received = current.EndReceive(AR);
+                }
+                else
+                {
+                    return;
+                }
             }
             catch (SocketException)
             {
@@ -89,43 +108,61 @@ namespace Server
             string text = Encoding.ASCII.GetString(recBuf);
             Console.WriteLine(text);
             byte[] data = Encoding.ASCII.GetBytes(text);
-            foreach (Socket socket in clientSockets)
+            if (clientSockets.Count > 0)
             {
-                if (socket != current)
+                foreach (Socket socket in clientSockets)
                 {
-                    socket.Send(data);
-                    socket.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, socket);
-                }
-                else
-                {
-                    if (counter <= 0)
+                    if (socket != current)
                     {
-                        stopWatch.Start();
-                        counter++;
-                        errorCounter = 0;
+                        socket.Send(data);
+                        socket.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, socket);
                     }
                     else
                     {
-                        if (stopWatch.ElapsedMilliseconds <= 10000)
+
+                        byte[] dataToUser = Encoding.ASCII.GetBytes(text + "$$$$$$$$$$");
+                        current.Send(dataToUser);
+                        current.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, current);
+                        if (socketSpamControl.GetValueOrDefault(current).listedControl)
                         {
-                            byte[] warning = Encoding.ASCII.GetBytes("Do NOT spam chat!!! \nYou'll get banned if you do it once again.");
-                            current.Send(warning);
-                            current.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, current);
-                            counter = 0;
-                            stopWatch.Stop();
-                            errorCounter++;
-                            if (errorCounter >= 1)
+                            socketSpamControl.GetValueOrDefault(current).listedControl = false;
+                            stopWatch.Start();
+                        }
+                        else
+                        {
+                            if (stopWatch.ElapsedMilliseconds <= 1000)
                             {
-                                warning = Encoding.ASCII.GetBytes("You've been warned. Sorry...");
-                                current.Send(warning);
-                                current.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, current);
-                                current.Shutdown(SocketShutdown.Both);
-                                current.Close();
+                                byte[] warning;
+                                if (socketSpamControl.GetValueOrDefault(current).gotWarned)
+                                {
+                                    warning = Encoding.ASCII.GetBytes("You've been warned. Sorry...");
+                                    current.Send(warning);
+                                    clientSockets.Remove(current);
+                                    warning = Encoding.ASCII.GetBytes("exit");
+                                    current.Send(warning);
+                                    socketSpamControl.Remove(current);
+                                    current.Shutdown(SocketShutdown.Both);
+                                    current.Close();
+                                    return;
+                                }
+                                else
+                                {
+                                    warning = Encoding.ASCII.GetBytes("Do NOT spam chat!!! \nYou'll get banned if you do it once again.");
+                                    current.Send(warning);
+                                    socketSpamControl.GetValueOrDefault(current).gotWarned = true;
+                                }
                             }
+                            else
+                            {
+                                socketSpamControl.GetValueOrDefault(current).listedControl = false;
+                            }
+                            socketSpamControl.GetValueOrDefault(current).listedControl = true;
+                            stopWatch.Reset();
                         }
                     }
                 }
             }
+
 
             //current.Send(data);
             //current.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, current);
