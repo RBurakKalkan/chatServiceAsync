@@ -4,18 +4,20 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Server
 {
     class Program
     {
         private static readonly Socket serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        private static  List<Socket> clientSockets = new List<Socket>();
-        //private static  Dictionary<Socket, bool> socketSpamControl = new Dictionary<Socket, bool>();
+        private static List<Socket> clientSockets = new List<Socket>();
         public class warnedSocketInfo
         {
             public bool listedControl { get; set; }
             public bool gotWarned { get; set; }
+            public long elapsedTime { get; set; }
         }
         public static Dictionary<Socket, warnedSocketInfo> socketSpamControl = new Dictionary<Socket, warnedSocketInfo>();
 
@@ -80,7 +82,7 @@ namespace Server
         }
 
 
-        private static void ReceiveCallback(IAsyncResult AR)
+        private static async void ReceiveCallback(IAsyncResult AR)
         {
             Socket current = (Socket)AR.AsyncState;
             int received;
@@ -108,64 +110,67 @@ namespace Server
             string text = Encoding.ASCII.GetString(recBuf);
             Console.WriteLine(text);
             byte[] data = Encoding.ASCII.GetBytes(text);
-            if (clientSockets.Count > 0)
+            await Task.Run(async () =>
             {
-                foreach (Socket socket in clientSockets)
+                await Task.Delay(100);
+                spamControl(current, data, text);
+            });
+        }
+        /// <summary>
+        /// Prevents a user to spam chat (send more than 1 message per second and punishes if happens)
+        /// and broadcasts one client's messages to every client.
+        /// </summary>
+        private static void spamControl(Socket current, byte[] data, string text)
+        {
+
+            foreach (Socket socket in clientSockets)
+            {
+                if (socket != current) // Send the receiving messages to the other users.
                 {
-                    if (socket != current)
+                    socket.Send(data);
+                    socket.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, socket);
+                }
+                else
+                {
+                    // check every users warned states by server and punish them if necessary.
+                    byte[] dataToUser = Encoding.ASCII.GetBytes(text + "$$$$$$$$$$");
+                    current.Send(dataToUser);
+                    current.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, current);
+                    if (socketSpamControl[current].listedControl)
                     {
-                        socket.Send(data);
-                        socket.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, socket);
+                        socketSpamControl[current].listedControl = false;
+                        stopWatch.Start();
                     }
                     else
                     {
-
-                        byte[] dataToUser = Encoding.ASCII.GetBytes(text + "$$$$$$$$$$");
-                        current.Send(dataToUser);
-                        current.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, current);
-                        if (socketSpamControl[current].listedControl)
+                        socketSpamControl[current].elapsedTime = stopWatch.ElapsedMilliseconds;
+                        if (socketSpamControl[current].elapsedTime <= 1000)
                         {
-                            socketSpamControl[current].listedControl = false;
-                            stopWatch.Start();
-                        }
-                        else
-                        {
-                            if (stopWatch.ElapsedMilliseconds <= 1000)
+                            byte[] warning;
+                            if (socketSpamControl[current].gotWarned)
                             {
-                                byte[] warning;
-                                if (socketSpamControl[current].gotWarned)
-                                {
-                                    warning = Encoding.ASCII.GetBytes("You've been warned. Sorry...");
-                                    current.Send(warning);
-                                    clientSockets.Remove(current);
-                                    warning = Encoding.ASCII.GetBytes("exit");
-                                    current.Send(warning);
-                                    socketSpamControl.Remove(current);
-                                    current.Shutdown(SocketShutdown.Both);
-                                    current.Close();
-                                    return;
-                                }
-                                else
-                                {
-                                    warning = Encoding.ASCII.GetBytes("Do NOT spam chat!!! \nYou'll get banned if you do it once again.");
-                                    current.Send(warning);
-                                    socketSpamControl[current].gotWarned = true;
-                                }
+                                warning = Encoding.ASCII.GetBytes("You've been warned. Sorry...");
+                                current.Send(warning);
+                                clientSockets.Remove(current);
+                                Console.WriteLine("Client banned.");
+                                socketSpamControl.Remove(current);
+                                current.Shutdown(SocketShutdown.Both);
+                                current.Close();
+                                return;
                             }
                             else
                             {
-                                socketSpamControl[current].listedControl = false;
+                                warning = Encoding.ASCII.GetBytes("Do NOT spam chat!!! You'll get banned if you do it once again.");
+                                current.Send(warning);
+                                socketSpamControl[current].gotWarned = true;
                             }
-                            socketSpamControl[current].listedControl = true;
-                            stopWatch.Reset();
                         }
+                        socketSpamControl[current].listedControl = true;
+                        socketSpamControl[current].elapsedTime = 0;
+                        stopWatch.Reset();
                     }
                 }
             }
-
-
-            //current.Send(data);
-            //current.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, current);
         }
     }
 }

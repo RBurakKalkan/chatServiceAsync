@@ -32,8 +32,7 @@ namespace Client
                 {
                     attempts++;
                     Console.WriteLine("Connection attempt " + attempts);
-                    // Change IPAddress.Loopback to a remote IP to connect to a remote host.
-                    ClientSocket.Connect(IPAddress.Loopback, PORT);
+                    ClientSocket.Connect(IPAddress.Any, PORT);
                 }
                 catch (SocketException)
                 {
@@ -46,11 +45,11 @@ namespace Client
             Thread consoleWriter = new Thread(new ThreadStart(ConsoleWriter));
             consoleWriter.Start();
             nickName = Console.ReadLine();
+            Console.WriteLine("You can chat now...");
         }
 
         private static void RequestLoop()
         {
-            //Console.WriteLine(@"<Type ""exit"" to properly disconnect client>");
 
             while (true)
             {
@@ -58,6 +57,9 @@ namespace Client
 
             }
         }
+        /// <summary>
+        /// Listens the broadcaster on server.
+        /// </summary>
         static void ConsoleWriter()
         {
             while (true)
@@ -76,9 +78,11 @@ namespace Client
             Environment.Exit(0);
         }
 
+        /// <summary>
+        /// Sets your nickname and sends your string to the interested method (the that will send it to the server in ASCII encoding).
+        /// </summary>
         private static void SendRequest()
         {
-            Console.Write(" >> ");
             string request = nickName + " : " + Console.ReadLine();
             SendString(request);
 
@@ -114,7 +118,7 @@ namespace Client
                 var data = new byte[received];
                 Array.Copy(buffer, data, received);
                 string text = Encoding.ASCII.GetString(data);
-                if (!text.Contains("$$$$$$$$$$"))
+                if (!text.Contains("$$$$$$$$$$")) // this is a control that will prevent the broadcaster to show the client its own message.
                 {
                     Console.WriteLine(" << " + text);
                 }
@@ -127,7 +131,6 @@ namespace Client
             {
                 Exit();
             }
-
         }
     }
 }
