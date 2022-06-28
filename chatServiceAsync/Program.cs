@@ -10,7 +10,7 @@ namespace Server
     class Program
     {
         private static readonly Socket serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        private static readonly List<Socket> clientSockets = new List<Socket>();
+        private static  List<Socket> clientSockets = new List<Socket>();
         //private static  Dictionary<Socket, bool> socketSpamControl = new Dictionary<Socket, bool>();
         public class warnedSocketInfo
         {
@@ -123,9 +123,9 @@ namespace Server
                         byte[] dataToUser = Encoding.ASCII.GetBytes(text + "$$$$$$$$$$");
                         current.Send(dataToUser);
                         current.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, current);
-                        if (socketSpamControl.GetValueOrDefault(current).listedControl)
+                        if (socketSpamControl[current].listedControl)
                         {
-                            socketSpamControl.GetValueOrDefault(current).listedControl = false;
+                            socketSpamControl[current].listedControl = false;
                             stopWatch.Start();
                         }
                         else
@@ -133,7 +133,7 @@ namespace Server
                             if (stopWatch.ElapsedMilliseconds <= 1000)
                             {
                                 byte[] warning;
-                                if (socketSpamControl.GetValueOrDefault(current).gotWarned)
+                                if (socketSpamControl[current].gotWarned)
                                 {
                                     warning = Encoding.ASCII.GetBytes("You've been warned. Sorry...");
                                     current.Send(warning);
@@ -149,14 +149,14 @@ namespace Server
                                 {
                                     warning = Encoding.ASCII.GetBytes("Do NOT spam chat!!! \nYou'll get banned if you do it once again.");
                                     current.Send(warning);
-                                    socketSpamControl.GetValueOrDefault(current).gotWarned = true;
+                                    socketSpamControl[current].gotWarned = true;
                                 }
                             }
                             else
                             {
-                                socketSpamControl.GetValueOrDefault(current).listedControl = false;
+                                socketSpamControl[current].listedControl = false;
                             }
-                            socketSpamControl.GetValueOrDefault(current).listedControl = true;
+                            socketSpamControl[current].listedControl = true;
                             stopWatch.Reset();
                         }
                     }
