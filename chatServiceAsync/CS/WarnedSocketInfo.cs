@@ -5,8 +5,6 @@ namespace Server
 {
     public class WarnedSocketInfo
     {
-        //public bool listedControl { get; set; }
-        //public bool gotWarned { get; set; }
         public long elapsedTime { get; set; }
         public int warnedState { get; set; }
 
