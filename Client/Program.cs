@@ -64,6 +64,7 @@ namespace Client
         {
             while (true)
             {
+                Thread.Sleep(100);
                 ReceiveResponse();
             }
         }
@@ -72,7 +73,6 @@ namespace Client
         /// </summary>
         private static void Exit()
         {
-            SendString("exit"); // Tell the server we are exiting
             ClientSocket.Shutdown(SocketShutdown.Both);
             ClientSocket.Close();
             Environment.Exit(0);
@@ -108,12 +108,12 @@ namespace Client
             }
         }
 
-        private static void ReceiveResponse()
+        private async static void ReceiveResponse()
         {
             try
             {
                 var buffer = new byte[2048];
-                int received = ClientSocket.Receive(buffer, SocketFlags.None);
+                int received = await ClientSocket.ReceiveAsync(buffer, SocketFlags.None);
                 if (received == 0) return;
                 var data = new byte[received];
                 Array.Copy(buffer, data, received);
@@ -122,7 +122,7 @@ namespace Client
                 {
                     Console.WriteLine(" << " + text);
                 }
-                else if (text == "exit")
+                else if (text == "You've been warned. Sorry...")
                 {
                     Exit();
                 }

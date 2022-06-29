@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -9,17 +10,27 @@ using System.Threading.Tasks;
 
 namespace Server
 {
-    class Program
+    partial class Program
     {
         private static readonly Socket serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        private static List<Socket> clientSockets = new List<Socket>();
-        public class warnedSocketInfo
+
+
+        private static List<Socket> mClientSockets;
+        public static List<Socket> ClientSockets
         {
-            public bool listedControl { get; set; }
-            public bool gotWarned { get; set; }
-            public long elapsedTime { get; set; }
+            get => mClientSockets = mClientSockets ?? new List<Socket>();
+            set => mClientSockets = value;
         }
-        public static Dictionary<Socket, warnedSocketInfo> socketSpamControl = new Dictionary<Socket, warnedSocketInfo>();
+        //public static Dictionary<Socket, warnedSocketInfo> socketSpamControl = new Dictionary<Socket, warnedSocketInfo>();
+
+        private static Dictionary<Socket, WarnedSocketInfo> mSocketSpamControl;
+        public static Dictionary<Socket, WarnedSocketInfo> SocketSpamControl
+        {
+            get => mSocketSpamControl = mSocketSpamControl ?? new Dictionary<Socket, WarnedSocketInfo>();
+            set => mSocketSpamControl = value;
+        }
+
+        public static Listener mListener { get; set; }
 
         private const int BUFFER_SIZE = 2048;
         private const int PORT = 100;
@@ -32,6 +43,8 @@ namespace Server
             SetupServer();
             Console.ReadLine(); // When we press enter close everything
             CloseAllSockets();
+
+
         }
 
         private static void SetupServer()
@@ -49,7 +62,7 @@ namespace Server
         /// </summary>
         private static void CloseAllSockets()
         {
-            foreach (Socket socket in clientSockets)
+            foreach (Socket socket in ClientSockets)
             {
                 socket.Shutdown(SocketShutdown.Both);
                 socket.Close();
@@ -71,38 +84,33 @@ namespace Server
                 return;
             }
 
-            clientSockets.Add(socket);
-            warnedSocketInfo a = new warnedSocketInfo();
-            a.listedControl = true;
-            a.gotWarned = false;
-            socketSpamControl.Add(socket, a);
+            ClientSockets.Add(socket);
+            WarnedSocketInfo a = new WarnedSocketInfo();
+            //a.listedControl = true;
+            //a.gotWarned = false;
+            a.warnedState = 0;
+            SocketSpamControl.Add(socket, a);
             socket.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, socket);
             Console.WriteLine("Client connected, waiting for request...");
             serverSocket.BeginAccept(AcceptCallback, null);
         }
-
+        static Socket previousSender;
 
         private static void ReceiveCallback(IAsyncResult AR)
         {
             Socket current = (Socket)AR.AsyncState;
-            int received;
+            var received = 0;
 
             try
             {
-                if (current.Connected)
-                {
-                    received = current.EndReceive(AR);
-                }
-                else
-                {
-                    return;
-                }
+                if (!current.Connected) return;
+                received = current.EndReceive(AR);
             }
             catch (SocketException)
             {
                 Console.WriteLine("Client forcefully disconnected");
+                ClientSockets.Remove(current);
                 current.Close();
-                clientSockets.Remove(current);
                 return;
             }
             byte[] recBuf = new byte[received];
@@ -110,68 +118,112 @@ namespace Server
             string text = Encoding.ASCII.GetString(recBuf);
             Console.WriteLine(text);
             byte[] data = Encoding.ASCII.GetBytes(text);
-            //await Task.Run(async () =>
-            //{
-            //    await Task.Delay(100);
-            spamControl(current, data, text);
-            //});
+            SpamControl(current, data, text);
+            previousSender = current;
         }
+
+        bool SenderContorl => true;
+
+
         /// <summary>
         /// Prevents a user to spam chat (send more than 1 message per second and punishes if happens)
         /// and broadcasts one client's messages to every client.
         /// </summary>
-        public async static void spamControl(Socket current, byte[] data, string text)
+        public async static void SpamControl(Socket current, byte[] data, string text)
         {
 
-            foreach (Socket socket in clientSockets)
+            var socketWithoutCurrent = ClientSockets.Where(x => x != current).ToList();
+
+            foreach (Socket socket in socketWithoutCurrent)
             {
                 if (socket != current) // Send the receiving messages to the other users.
                 {
                     await socket.SendAsync(data, SocketFlags.None);
                     socket.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, socket);
                 }
-                else
-                {
-                    // check every users warned states by server and punish them if necessary.
-                    byte[] dataToUser = Encoding.ASCII.GetBytes(text + "$$$$$$$$$$");
-                    await current.SendAsync(dataToUser, SocketFlags.None);
-                    current.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, current);
-                    if (socketSpamControl[current].listedControl)
-                    {
-                        socketSpamControl[current].listedControl = false;
-                        stopWatch.Start();
-                    }
-                    else
-                    {
-                        socketSpamControl[current].elapsedTime = stopWatch.ElapsedMilliseconds;
-                        if (socketSpamControl[current].elapsedTime <= 1000)
-                        {
-                            byte[] warning;
-                            if (socketSpamControl[current].gotWarned)
-                            {
-                                warning = Encoding.ASCII.GetBytes("You've been warned. Sorry...");
-                                await current.SendAsync(warning, SocketFlags.None);
-                                clientSockets.Remove(current);
-                                Console.WriteLine("Client banned.");
-                                socketSpamControl.Remove(current);
-                                current.Shutdown(SocketShutdown.Both);
-                                current.Close();
-                                return;
-                            }
-                            else
-                            {
-                                warning = Encoding.ASCII.GetBytes("Do NOT spam chat!!! You'll get banned if you do it once again.");
-                                await current.SendAsync(warning, SocketFlags.None);
-                                Console.WriteLine("Client warned.");
-                                socketSpamControl[current].gotWarned = true;
-                            }
-                        }
-                        socketSpamControl[current].listedControl = true;
-                        socketSpamControl[current].elapsedTime = 0;
-                        stopWatch.Reset();
-                    }
-                }
+
+
             }
+
+
+            // check every users warned states by server and punish them if necessary.
+            byte[] dataToUser = Encoding.ASCII.GetBytes(text + "$$$$$$$$$$");
+            await current.SendAsync(dataToUser, SocketFlags.None);
+            current.BeginReceive(buffer, 0, BUFFER_SIZE, SocketFlags.None, ReceiveCallback, current);
+            byte[] warning;
+            SocketSpamControl[current].elapsedTime = stopWatch.ElapsedMilliseconds;
+            if (current == previousSender)
+            {
+                switch (SocketSpamControl[current].warnedState)
+                {
+                    case 0:
+                        stopWatch.Start();
+                        SocketSpamControl[current].warnedState = 1;
+                        break;
+                    case 1:
+                        if (SocketSpamControl[current].elapsedTime <= 1000)
+                        {
+                            warning = Encoding.ASCII.GetBytes("Do NOT spam chat!!! You'll get banned if you do it once again.");
+                            await current.SendAsync(warning, SocketFlags.None);
+                            Console.WriteLine("Client warned.");
+                            SocketSpamControl[current].warnedState = 2;
+                        }
+                        break;
+                    case 2:
+                        if (SocketSpamControl[current].elapsedTime <= 1000)
+                        {
+                            warning = Encoding.ASCII.GetBytes("You've been warned. Sorry...");
+                            await current.SendAsync(warning, SocketFlags.None);
+                            ClientSockets.Remove(current);
+                            Console.WriteLine("Client banned.");
+                            SocketSpamControl.Remove(current);
+                            current.Shutdown(SocketShutdown.Both);
+                            current.Close();
+                            return;
+                        }
+                        break;
+                    default:
+
+                        break;
+                }
+                SocketSpamControl[current].elapsedTime = 0;
+                stopWatch.Reset();
+                stopWatch.Start();
+            }
+
+
+            //if (SocketSpamControl[current].warnedState == 0)
+            //{
+            //    stopWatch.Start();
+            //    SocketSpamControl[current].warnedState = 1;
+            //}
+            //else if (SocketSpamControl[current].warnedState == 1 && SocketSpamControl[current].elapsedTime <= 1000)
+            //{
+            //    warning = Encoding.ASCII.GetBytes("Do NOT spam chat!!! You'll get banned if you do it once again.");
+            //    await current.SendAsync(warning, SocketFlags.None);
+            //    Console.WriteLine("Client warned.");
+            //    SocketSpamControl[current].warnedState = 2;
+
+            //}
+            //else if (SocketSpamControl[current].warnedState == 2 && SocketSpamControl[current].elapsedTime <= 1000)
+            //{
+            //    warning = Encoding.ASCII.GetBytes("You've been warned. Sorry...");
+            //    await current.SendAsync(warning, SocketFlags.None);
+            //    ClientSockets.Remove(current);
+            //    Console.WriteLine("Client banned.");
+            //    SocketSpamControl.Remove(current);
+            //    current.Shutdown(SocketShutdown.Both);
+            //    current.Close();
+            //    return;
+            //}
+            //else
+            //{
+            //SocketSpamControl[current].elapsedTime = 0;
+            //SocketSpamControl[current].warnedState = SocketSpamControl[current].warnedState == 2 ? 2 : SocketSpamControl[current].warnedState;
+            //stopWatch.Reset();
+            //stopWatch.Start();
+            //}
+            //});
         }
     }
 }
