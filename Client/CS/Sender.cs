@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Text;
 
-namespace Client.CS
+namespace Client
 {
     public class Sender
     {
@@ -33,7 +33,7 @@ namespace Client.CS
         /// <summary>
         /// Sends a string to the server asynchronously with ASCII encoding.
         /// </summary>
-        private async static void SendString(string text)
+        public async static void SendString(string text)// Made it public just to unit test.
         {
             try
             {

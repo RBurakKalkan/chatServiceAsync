@@ -1,6 +1,4 @@
-﻿using Client.CS;
-using System;
-using System.Collections.Generic;
+﻿using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -8,7 +6,7 @@ using System.Threading;
 
 namespace Client
 {
-    class Receiver
+    public class Receiver
     {
         #region Variables & Definitions
         private static int Port { get; set; }
@@ -76,7 +74,7 @@ namespace Client
         /// <summary>
         /// Listens the broadcaster on server in a loop.
         /// </summary>
-        static void ConsoleWriter()
+        private static void ConsoleWriter()
         {
             while (true)
             {
@@ -114,7 +112,6 @@ namespace Client
             ClientSocket.Close();
             Environment.Exit(0);
         }
-
         /// <summary>
         /// Start application with Default initialized variables.
         /// </summary>

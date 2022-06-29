@@ -112,7 +112,7 @@ namespace Server
         /// Prevents a user to spam chat (send more than 1 message per second and punishes if happens)
         /// and broadcasts one client's messages to every client.
         /// </summary>
-        private async static void SpamControl(Socket current, byte[] data, string text)
+        public async static void SpamControl(Socket current, byte[] data, string text)// Made it public just to unit test.
         {
 
             var socketWithoutCurrent = WarnedSocketInfo.SocketSpamControl.Keys.Where(x => x != current).ToList();
